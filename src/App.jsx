@@ -6,12 +6,8 @@ const C = {
   blush: "#d4967a", sage: "#7a9478", sky: "#6a8fa8",
 };
 
-const SYSTEM_PROMPT = `You are a Paris travel concierge for Eric & Candice, Allen & Elizabeth, and Rick & Lynn visiting May 6-14 2025.
-Itinerary: Wed 5/6 arrive, dinner Chez Papa 7PM (reserved 6). Thu 5/7 Louvre 11AM, Printemps rooftop, Le Grande Épicerie, dinner Le Procope. Fri 5/8 Musée d'Orsay 10:30AM, Eric&Candice lunch with friends, dinner Chez Walczak 7:30PM €40pp (reserved 6). Sat 5/9 Sacré-Cœur 9:30AM, Le Marais afternoon, Mariage Frères tea 4:30PM walk-in only, dinner TBD. Sun-Mon 5/10-11 Allen/Elizabeth/Rick/Lynn in Champagne, Eric&Candice away. Tue 5/12 varying plans, Eric&Candice dinner with Eugé&Diego. Wed 5/13 Notre-Dame morning, lunch L'Atelier Maître Albert noon (reserved 6, Michelin Guide). Thu 5/14 depart.
-Options: Crazy Horse/Moulin Rouge/Paradis Latin cabarets. La Mosquée tea room & hammam. Bar Hemingway at The Ritz 5PM-midnight. La Tour d'Argent 1 Michelin star jacket required groups4+ call +33140467139.
-Be warm, concise, helpful. Give insider Paris tips.`;
-
 // ── DATA ──────────────────────────────────────────────────────
+
 const DAYS = [
   { date: "6", month: "May", weekday: "Wed", title: "Arrive in Paris! 🥂", who: ["all"], open: true,
     events: [
@@ -152,18 +148,8 @@ const WHO_COLORS = {
   all:  { bg: "rgba(184,150,74,0.15)", color: C.gold, label: "All Six" },
   ec:   { bg: "rgba(122,148,120,0.15)", color: C.sage, label: "E&C" },
   ae:   { bg: "rgba(106,143,168,0.15)", color: C.sky,  label: "A&E" },
-  rl:   { bg: "rgba(212,150,122,0.15)", color: C.blush, label: "R&L" },
+  rl:   { bg: "rgba(212,150,122,0.15)", color: C.blush,label: "R&L" },
 };
-
-const SUGGESTIONS = [
-  "What should we do for dinner Saturday night?",
-  "Tips for the Louvre — what to prioritize?",
-  "Crazy Horse vs Moulin Rouge?",
-  "Best wine bars near Le Marais?",
-  "What metro line from Sacré-Cœur to Le Marais?",
-  "French phrases for restaurants?",
-  "Is La Tour d'Argent worth it?",
-];
 
 // ── STYLES ────────────────────────────────────────────────────
 const gf = `@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;1,400&family=Cormorant+Garamond:ital,wght@0,300;0,400;1,300&family=Jost:wght@300;400;500&display=swap');
@@ -171,6 +157,8 @@ const gf = `@import url('https://fonts.googleapis.com/css2?family=Playfair+Displ
 @keyframes scrollPulse { 0%,100% { opacity:0.4; } 50% { opacity:1; } }
 @keyframes typingBounce { 0%,60%,100% { opacity:0.4; transform:translateY(0); } 30% { opacity:1; transform:translateY(-3px); } }
 @keyframes popIn { from { transform:scale(0.88) translateY(10px); opacity:0; } to { transform:scale(1) translateY(0); opacity:1; } }
+@keyframes slideUp { from { transform:translateY(100%); } to { transform:translateY(0); } }
+@keyframes logoIn { from { opacity:0; transform:scale(0.85); } to { opacity:1; transform:scale(1); } }
 * { margin:0; padding:0; box-sizing:border-box; }
 body { font-family:'Jost',sans-serif; background:${C.cream}; color:${C.charcoal}; }
 ::-webkit-scrollbar { width:4px; height:4px; }
@@ -179,6 +167,7 @@ body { font-family:'Jost',sans-serif; background:${C.cream}; color:${C.charcoal}
 `;
 
 // ── COMPONENTS ────────────────────────────────────────────────
+
 function WhoTag({ type }) {
   const s = WHO_COLORS[type];
   return <span style={{ fontSize:"0.6rem", letterSpacing:"0.1em", textTransform:"uppercase", padding:"0.2rem 0.6rem", borderRadius:2, fontWeight:500, background:s.bg, color:s.color, marginRight:4 }}>{s.label}</span>;
@@ -271,145 +260,13 @@ const BADGE = {
   reserved: { bg:"rgba(122,148,120,0.15)", color:C.sage, label:"✓ Reserved for 6" },
   michelin:  { bg:"rgba(184,150,74,0.15)", color:C.gold, label:"★ Michelin" },
   walkin:    { bg:"rgba(106,143,168,0.15)", color:C.sky,  label:"Walk-in Only" },
-  tbd:       { bg:"rgba(212,150,122,0.15)", color:C.blush, label:"Reserve Ahead" },
+  tbd:       { bg:"rgba(212,150,122,0.15)", color:C.blush,label:"Reserve Ahead" },
 };
 
 // ── CHAT WIDGET ───────────────────────────────────────────────
-function ChatWidget() {
-  const [open, setOpen] = useState(false);
-  const [msgs, setMsgs] = useState([]);
-  const [input, setInput] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [history, setHistory] = useState([]);
-  const feedRef = useRef(null);
-  const taRef = useRef(null);
-
-  useEffect(() => {
-    if (feedRef.current) feedRef.current.scrollTop = feedRef.current.scrollHeight;
-  }, [msgs, loading]);
-
-  const send = async (text) => {
-    const msg = (text || input).trim();
-    if (!msg || loading) return;
-    setInput("");
-    if (taRef.current) { taRef.current.style.height = "auto"; }
-
-    const messagesForApi = history.length === 0
-      ? [{ role: "user", content: SYSTEM_PROMPT + "\n\nGuest's question: " + msg }]
-      : [...history, { role: "user", content: msg }];
-
-    const newHistory = [...history, { role: "user", content: msg }];
-    setHistory(newHistory);
-    setMsgs(m => [...m, { role: "user", text: msg }]);
-    setLoading(true);
-
-    try {
-      const response = await fetch("/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: messagesForApi }),
-      });
-      const data = await response.json();
-      const reply = data.content[0].text;
-      setHistory(h => [...h, { role: "assistant", content: reply }]);
-      setMsgs(m => [...m, { role: "assistant", text: reply }]);
-    } catch (e) {
-      setMsgs(m => [...m, { role: "assistant", text: "Désolé! " + (e.message || "Connection issue. Try again.") }]);
-    }
-    setLoading(false);
-  };
-
-  const onKey = (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } };
-
-  return (
-    <>
-      <button onClick={() => setOpen(o => !o)} style={{
-        position:"fixed", bottom:"1.5rem", right:"1.5rem", zIndex:300,
-        width:56, height:56, borderRadius:"50%",
-        background:`linear-gradient(135deg, ${C.gold}, ${C.goldL})`,
-        border:"none", cursor:"pointer",
-        boxShadow:`0 4px 20px rgba(184,150,74,0.5)`,
-        fontSize:"1.4rem", display:"flex", alignItems:"center", justifyContent:"center",
-      }}>
-        {open ? "✕" : "🗼"}
-      </button>
-      {open && (
-        <div style={{
-          position:"fixed", bottom:"5rem", right:"1.5rem", zIndex:299,
-          width:330, maxWidth:"calc(100vw - 2rem)",
-          height:470, maxHeight:"calc(100vh - 7rem)",
-          background:"#1a1710",
-          border:`1px solid rgba(184,150,74,0.25)`,
-          borderRadius:16,
-          boxShadow:"0 12px 48px rgba(0,0,0,0.55)",
-          display:"flex", flexDirection:"column", overflow:"hidden",
-          animation:"popIn 0.25s cubic-bezier(.34,1.56,.64,1) both",
-        }}>
-          <div style={{ display:"flex", alignItems:"center", gap:"0.6rem", padding:"0.85rem 1rem", borderBottom:`1px solid rgba(184,150,74,0.15)`, flexShrink:0 }}>
-            <div style={{ width:30, height:30, borderRadius:"50%", background:`linear-gradient(135deg,${C.gold},${C.goldL})`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:"0.75rem", color:C.dark, fontWeight:700 }}>✦</div>
-            <div style={{ flex:1 }}>
-              <div style={{ fontFamily:"'Playfair Display',serif", fontSize:"0.9rem", color:C.cream, fontWeight:400 }}>Paris Concierge</div>
-              <div style={{ fontSize:"0.62rem", color:C.sage }}>● Online · Powered by Claude</div>
-            </div>
-            {msgs.length > 0 && <button onClick={() => { setMsgs([]); setHistory([]); }} style={{ background:"none", border:"none", cursor:"pointer", fontSize:"0.62rem", letterSpacing:"0.08em", textTransform:"uppercase", color:"rgba(245,240,232,0.3)" }}>Clear</button>}
-          </div>
-          <div style={{ display:"flex", gap:"0.4rem", padding:"0.55rem 0.8rem", overflowX:"auto", borderBottom:`1px solid rgba(184,150,74,0.08)`, flexShrink:0, scrollbarWidth:"none" }}>
-            {SUGGESTIONS.map((s, i) => (
-              <button key={i} onClick={() => send(s)} style={{ background:"rgba(184,150,74,0.08)", border:`1px solid rgba(184,150,74,0.2)`, borderRadius:20, padding:"0.22rem 0.65rem", fontSize:"0.64rem", color:C.goldL, cursor:"pointer", whiteSpace:"nowrap", fontFamily:"'Jost',sans-serif", flexShrink:0 }}>
-                {s.length > 22 ? s.slice(0, 22) + "…" : s}
-              </button>
-            ))}
-          </div>
-          <div ref={feedRef} style={{ flex:1, overflowY:"auto", padding:"0.8rem", display:"flex", flexDirection:"column", gap:"0.65rem" }}>
-            {msgs.length === 0 && (
-              <div style={{ textAlign:"center", padding:"1.5rem 0.5rem" }}>
-                <div style={{ fontSize:"2rem", marginBottom:"0.5rem" }}>🗼</div>
-                <p style={{ fontFamily:"'Cormorant Garamond',serif", fontStyle:"italic", fontSize:"0.88rem", color:"rgba(245,240,232,0.45)", lineHeight:1.55 }}>Bonjour! I'm your Paris concierge.<br/>Ask me anything about your trip.</p>
-              </div>
-            )}
-            {msgs.map((m, i) => (
-              <div key={i} style={{ display:"flex", gap:"0.45rem", maxWidth:"90%", alignSelf: m.role === "user" ? "flex-end" : "flex-start", flexDirection: m.role === "user" ? "row-reverse" : "row" }}>
-                {m.role === "assistant" && (
-                  <div style={{ minWidth:22, height:22, borderRadius:"50%", background:`linear-gradient(135deg,${C.gold},${C.goldL})`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:"0.55rem", color:C.dark, fontWeight:700, flexShrink:0, marginTop:2 }}>✦</div>
-                )}
-                <div style={{
-                  padding:"0.5rem 0.7rem", borderRadius: m.role === "user" ? "10px 3px 10px 10px" : "3px 10px 10px 10px",
-                  fontSize:"0.78rem", lineHeight:1.55,
-                  background: m.role === "user" ? C.gold : "rgba(245,240,232,0.07)",
-                  color: m.role === "user" ? C.dark : "rgba(245,240,232,0.88)",
-                  border: m.role === "assistant" ? `1px solid rgba(184,150,74,0.13)` : "none",
-                  fontFamily:"'Jost',sans-serif",
-                }} dangerouslySetInnerHTML={{ __html: m.text.replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>").replace(/\n/g, "<br/>") }} />
-              </div>
-            ))}
-            {loading && (
-              <div style={{ display:"flex", gap:"0.45rem", alignSelf:"flex-start" }}>
-                <div style={{ minWidth:22, height:22, borderRadius:"50%", background:`linear-gradient(135deg,${C.gold},${C.goldL})`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:"0.55rem", color:C.dark, fontWeight:700 }}>✦</div>
-                <div style={{ padding:"0.55rem 0.7rem", borderRadius:"3px 10px 10px 10px", background:"rgba(245,240,232,0.07)", border:`1px solid rgba(184,150,74,0.13)`, display:"flex", gap:4, alignItems:"center" }}>
-                  {[0,0.2,0.4].map((d,i) => <span key={i} style={{ width:5, height:5, borderRadius:"50%", background:C.goldL, display:"inline-block", animation:`typingBounce 1.2s ${d}s infinite` }} />)}
-                </div>
-              </div>
-            )}
-          </div>
-          <div style={{ padding:"0.55rem 0.65rem", borderTop:`1px solid rgba(184,150,74,0.12)`, display:"flex", gap:"0.45rem", alignItems:"flex-end", flexShrink:0, background:"rgba(0,0,0,0.2)" }}>
-            <textarea
-              ref={taRef}
-              value={input}
-              onChange={e => { setInput(e.target.value); e.target.style.height = "auto"; e.target.style.height = e.target.scrollHeight + "px"; }}
-              onKeyDown={onKey}
-              placeholder="Ask anything…"
-              rows={1}
-              style={{ flex:1, background:"rgba(245,240,232,0.07)", border:`1px solid rgba(184,150,74,0.18)`, borderRadius:8, padding:"0.45rem 0.7rem", fontFamily:"'Jost',sans-serif", fontSize:"0.78rem", color:C.cream, resize:"none", minHeight:34, maxHeight:100, outline:"none", lineHeight:1.4 }}
-            />
-            <button onClick={() => send()} style={{ background:C.gold, border:"none", borderRadius:8, width:34, height:34, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", fontSize:"0.8rem", color:C.dark, flexShrink:0 }}>➤</button>
-          </div>
-        </div>
-      )}
-    </>
-  );
-}
 
 // ── TABS ──────────────────────────────────────────────────────
+
 function ItineraryTab() {
   return (
     <div>
@@ -435,7 +292,7 @@ function RestaurantsTab() {
       <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(240px,1fr))", gap:"0.9rem", marginBottom:"2rem" }}>
         <RestaurantCard type="Dinner · Wed 5/6 · 7 PM" name="Chez Papa" meta="138 Bd du Montparnasse, 75014<br/><strong>Montparnasse Vavin</strong><br/>Classic French brasserie. First night together." badges={[BADGE.reserved]}
           metro={[{ stop: "Vavin", lines: [["4","#009CDA","#fff"]] }, { stop: "Notre-Dame-des-Champs", lines: [["12","#E3051B","#fff"]] }]} />
-        <RestaurantCard type="Dinner · Fri 5/8 · 7:30 PM" name="Chez Walczak" meta="Aux Sportifs Réunis<br/>75 Rue Brancion, 75015<br/><strong>€40/pp</strong> incl. food &amp; drink" badges={[BADGE.reserved]}
+        <RestaurantCard type="Dinner · Fri 5/8 · 7:30 PM" name="Chez Walczak" meta="Aux Sportifs Réunis<br/>75 Rue Brancion, 75015<br/><strong>€40/pp</strong> incl. food & drink" badges={[BADGE.reserved]}
           metro={[{ stop: "Porte de Vanves", lines: [["13","#9DC9E8","#000"]] }, { stop: "Plaisance", lines: [["13","#9DC9E8","#000"]] }]} />
         <RestaurantCard type="Lunch · Wed 5/13 · Noon" name="L'Atelier Maître Albert" meta="1 Rue Maître Albert, 75005<br/><strong>Near Notre-Dame</strong><br/>Michelin Guide · Recommended by Tomas" badges={[BADGE.reserved, BADGE.michelin]}
           metro={[{ stop: "Maubert-Mutualité", lines: [["10","#6F4C9B","#fff"]] }, { stop: "Cardinal Lemoine", lines: [["10","#6F4C9B","#fff"]] }]} />
@@ -448,14 +305,14 @@ function RestaurantsTab() {
           metro={[{ stop: "Opéra", lines: [["3","#9F9825","#fff"],["7","#F0A500","#000"],["8","#C897C4","#000"]] }, { stop: "Madeleine", lines: [["8","#C897C4","#000"],["12","#E3051B","#fff"],["14","#62259D","#fff"]] }]} />
         <RestaurantCard type="Tea Room · Sat 5/9 · 4:30 PM" name="Mariage Frères" meta="Salon de Thé<br/>30 Rue Du Bourg Tibourg<br/><strong>Walk-in only</strong>" badges={[BADGE.walkin]}
           metro={[{ stop: "Hôtel de Ville", lines: [["1","#FFBE00","#000"],["11","#8D5E2A","#fff"]] }, { stop: "Rambuteau", lines: [["11","#8D5E2A","#fff"]] }]} />
-        <RestaurantCard type="Dinner · Thu 5/7" name="Le Procope" meta="Paris's oldest café-restaurant (est. 1686)<br/>Allen, Elizabeth, Lynn &amp; Rick" badges={[BADGE.tbd]}
+        <RestaurantCard type="Dinner · Thu 5/7" name="Le Procope" meta="Paris's oldest café-restaurant (est. 1686)<br/>Allen, Elizabeth, Lynn & Rick" badges={[BADGE.tbd]}
           metro={[{ stop: "Odéon", lines: [["4","#009CDA","#fff"],["10","#6F4C9B","#fff"]] }, { stop: "Saint-Germain-des-Prés", lines: [["4","#009CDA","#fff"]] }]} />
       </div>
       <h3 style={{ fontFamily:"'Playfair Display',serif", fontWeight:400, fontSize:"0.9rem", color:C.muted, marginBottom:"0.8rem", letterSpacing:"0.05em" }}>GOURMET SHOPPING</h3>
       <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(240px,1fr))", gap:"0.9rem" }}>
         <RestaurantCard type="Food Hall · Thu 5/7" name="Le Grande Épicerie" meta="Lower level of Au Bon Marché<br/><strong>Hours: 8:30 AM–9:00 PM</strong><br/>~20 min Uber from Printemps · Perfect for edible souvenirs"
           metro={[{ stop: "Sèvres-Babylone", lines: [["10","#6F4C9B","#fff"],["12","#E3051B","#fff"]] }, { stop: "Rue du Bac", lines: [["12","#E3051B","#fff"]] }]} />
-        <RestaurantCard type="Rooftop Bar · Thu 5/7" name="Printemps Haussmann — Perruche" meta="Rooftop bar &amp; terrace<br/><strong>~7 min Uber from the Louvre</strong><br/>Stunning Haussmann rooftop views"
+        <RestaurantCard type="Rooftop Bar · Thu 5/7" name="Printemps Haussmann — Perruche" meta="Rooftop bar & terrace<br/><strong>~7 min Uber from the Louvre</strong><br/>Stunning Haussmann rooftop views"
           metro={[{ stop: "Havre-Caumartin", lines: [["3","#9F9825","#fff"],["9","#6ECA97","#000"]] }, { stop: "Saint-Lazare", lines: [["3","#9F9825","#fff"],["12","#E3051B","#fff"],["13","#9DC9E8","#000"],["14","#62259D","#fff"]] }]} />
       </div>
     </div>
@@ -470,28 +327,74 @@ function ExtrasTab() {
     </div>
   );
   const item = (content) => <div style={{ padding:"0.45rem 0", borderBottom:`1px solid rgba(184,150,74,0.08)`, fontSize:"0.8rem", color:C.charcoal, lineHeight:1.5 }}>{content}</div>;
+
   return (
     <div>
       <SectionHeader num="03" title="Extras & Tips" />
       <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"0.9rem" }}>
+        {card("🚖 Getting Around",
+          <>
+            {item(<><strong>Uber</strong> — Works just like in the US · <a href="https://m.uber.com" target="_blank" style={{ color:C.gold, fontSize:"0.7rem" }}>m.uber.com →</a></>)}
+            {item(<><strong>Bolt</strong> — Often cheaper than Uber in Paris · Download the app first</>)}
+            {item(<><strong>FreeNow</strong> — Books official Parisian taxis · Most reliable backup</>)}
+            {item(<><strong>G7 Taxi</strong> — For airport runs ✈️<br/><a href="tel:+33141275000" style={{ color:C.gold, fontSize:"0.75rem" }}>📞 +33 1 41 27 50 00</a> · <a href="https://www.g7.fr/en" target="_blank" style={{ color:C.gold, fontSize:"0.7rem" }}>g7.fr →</a></>)}
+            {item(<><strong>Métro</strong> — Cheapest, fastest in central Paris · See Métro tab</>)}
+            {item(<><strong>Vélib'</strong> — Bike share · 1.7M+ rides/month · App: Vélib' Métropole</>)}
+          </>
+        )}
+        {card("✈️ To/From Airport (CDG)",
+          <>
+            {item(<><strong>Taxi flat rate:</strong> €56 (Right Bank) · €65 (Left Bank) · 45-60 min</>)}
+            {item(<><strong>RER B</strong> — €12 train · 35 min direct from Châtelet · Watch belongings</>)}
+            {item(<><strong>G7 Pre-book</strong> — Best for early flights, English drivers available</>)}
+            {item(<><strong>Uber Black</strong> — Pre-schedulable, more reliable than UberX for airports</>)}
+          </>
+        )}
+        {card("💳 Money Tips",
+          <>
+            {item(<><strong>Cards work everywhere</strong> — Apple Pay accepted at most places</>)}
+            {item(<><strong>Cash useful for:</strong> Small cafés, markets, taxi tips</>)}
+            {item(<><strong>ATMs (DAB)</strong> — Use bank ATMs (BNP, Société Générale) not Euronet</>)}
+            {item(<><strong>Always pay in EUR</strong> — Decline "pay in USD" — it's a bad rate</>)}
+            {item(<><strong>Tipping</strong> — Service included; round up or 5-10% for great service</>)}
+          </>
+        )}
+        {card("📱 Phone & Wi-Fi",
+          <>
+            {item(<><strong>eSIM</strong> — Airalo or Holafly · Easiest, set up before leaving</>)}
+            {item(<><strong>Free Wi-Fi</strong> — All cafés, museums, métro stations have it</>)}
+            {item(<><strong>Verizon/AT&T Travel Pass</strong> — $10/day if you don't want eSIM hassle</>)}
+            {item(<><strong>WhatsApp</strong> — How most Parisians text. Use it instead of SMS</>)}
+          </>
+        )}
+        {card("🆘 Emergency Numbers",
+          <>
+            {item(<><strong>112</strong> — Universal emergency (works on any phone)</>)}
+            {item(<><strong>17</strong> — Police</>)}
+            {item(<><strong>15</strong> — SAMU (medical/ambulance)</>)}
+            {item(<><strong>18</strong> — Pompiers (fire)</>)}
+            {item(<><strong>3624</strong> — SOS Médecins (doctor house calls)</>)}
+            {item(<><strong>US Embassy Paris:</strong> +33 1 43 12 22 22</>)}
+          </>
+        )}
         {card("🎭 Cabaret Options",
           <>
-            {item(<><strong>Crazy Horse</strong> — Triangle d'Or · <a href="https://www.lecrazyhorseparis.com/en/" target="_blank" rel="noreferrer" style={{ color:C.gold, fontSize:"0.7rem" }}>lecrazyhorseparis.com →</a></>)}
-            {item(<><strong>Paradis Latin</strong> — Quartier Latin · <a href="https://www.paradislatin.com/en/" target="_blank" rel="noreferrer" style={{ color:C.gold, fontSize:"0.7rem" }}>paradislatin.com →</a></>)}
-            {item(<><strong>Moulin Rouge</strong> — Pigalle · <a href="https://www.moulinrouge.fr" target="_blank" rel="noreferrer" style={{ color:C.gold, fontSize:"0.7rem" }}>moulinrouge.fr →</a></>)}
+            {item(<><strong>Crazy Horse</strong> — Triangle d'Or · <a href="https://www.lecrazyhorseparis.com/en/" target="_blank" style={{ color:C.gold, fontSize:"0.7rem" }}>lecrazyhorseparis.com →</a></>)}
+            {item(<><strong>Paradis Latin</strong> — Quartier Latin · <a href="https://www.paradislatin.com/en/" target="_blank" style={{ color:C.gold, fontSize:"0.7rem" }}>paradislatin.com →</a></>)}
+            {item(<><strong>Moulin Rouge</strong> — Pigalle · <a href="https://www.moulinrouge.fr" target="_blank" style={{ color:C.gold, fontSize:"0.7rem" }}>moulinrouge.fr →</a></>)}
           </>
         )}
         {card("🕌 La Mosquée de Paris",
           <>
             {item(<><strong>Tea Room / Garden</strong><br/><span style={{ color:C.muted }}>Petit déjeuner, mint tea, pastries, crêpes · 9AM–11:30PM</span></>)}
-            {item(<><strong>Restaurant</strong> — Tagine, couscous &amp; more · 11:30AM–10:30PM</>)}
-            {item(<><strong>Hammam</strong> — Spa &amp; beauty services for women</>)}
+            {item(<><strong>Restaurant</strong> — Tagine, couscous & more · 11:30AM–10:30PM</>)}
+            {item(<><strong>Hammam</strong> — Spa & beauty services for women</>)}
           </>
         )}
         {card("🛒 Shopping Essentials",
           <>
-            {item(<><strong>Monoprix</strong> — Grocery, clothes &amp; pharmacy finds</>)}
-            {item(<><strong>Pharmacy</strong> — La Roche-Posay, Bioderma, Embryolisse &amp; more</>)}
+            {item(<><strong>Monoprix</strong> — Grocery, clothes & pharmacy finds</>)}
+            {item(<><strong>Pharmacy</strong> — La Roche-Posay, Bioderma, Embryolisse & more</>)}
             {item(<><strong>Picard</strong> — Frozen food only. Surprisingly wonderful, very French.</>)}
           </>
         )}
@@ -500,14 +403,14 @@ function ExtrasTab() {
             {item(<>Mariage Frères: <strong>Walk-in only</strong> — arrive early Sat 4:30PM</>)}
             {item(<>La Tour d'Argent: <strong>Jacket required</strong>. Groups 4+, email or call ahead.</>)}
             {item(<>Bar Hemingway: <strong>5PM–midnight</strong> — perfect pre or post-dinner</>)}
-            {item(<>Eric &amp; Candice away <strong>Sun 5/10–Tue 5/12</strong></>)}
+            {item(<>Eric & Candice away <strong>Sun 5/10–Tue 5/12</strong></>)}
             {item(<>Service is included (service compris) — tip a few euros if you'd like</>)}
           </>
         )}
       </div>
       <div style={{ marginTop:"1rem", background:"linear-gradient(135deg,#2d2a24,#1a1710)", border:`1px solid rgba(184,150,74,0.3)`, borderRadius:4, padding:"1.3rem", textAlign:"center" }}>
         <p style={{ fontFamily:"'Cormorant Garamond',serif", fontStyle:"italic", fontSize:"1rem", color:C.goldL }}>🍾 Champagne Region · Sun May 10 – Mon May 11</p>
-        <p style={{ marginTop:4, fontSize:"0.8rem", color:"rgba(245,240,232,0.5)" }}>Allen, Elizabeth, Rick &amp; Lynn · A proper bubbly detour</p>
+        <p style={{ marginTop:4, fontSize:"0.8rem", color:"rgba(245,240,232,0.5)" }}>Allen, Elizabeth, Rick & Lynn · A proper bubbly detour</p>
       </div>
     </div>
   );
@@ -553,7 +456,7 @@ function WeatherTab() {
         <p style={{ fontFamily:"'Cormorant Garamond',serif", fontStyle:"italic", fontSize:"0.9rem", color:C.goldL, marginBottom:"0.6rem" }}>Check live forecasts closer to departure</p>
         <div style={{ display:"flex", justifyContent:"center", gap:"1.5rem", flexWrap:"wrap" }}>
           {[["weather.com","https://weather.com/weather/tenday/l/Paris+France"],["Météo France","https://www.meteo.fr"],["AccuWeather","https://www.accuweather.com/en/fr/paris/623/may-weather/623"]].map(([label, url]) => (
-            <a key={label} href={url} target="_blank" rel="noreferrer" style={{ fontSize:"0.68rem", letterSpacing:"0.1em", textTransform:"uppercase", color:"rgba(245,240,232,0.55)", textDecoration:"none" }}>{label} →</a>
+            <a key={label} href={url} target="_blank" style={{ fontSize:"0.68rem", letterSpacing:"0.1em", textTransform:"uppercase", color:"rgba(245,240,232,0.55)", textDecoration:"none" }}>{label} →</a>
           ))}
         </div>
       </div>
@@ -593,7 +496,7 @@ function MetroTab() {
         ))}
       </div>
       <div style={{ textAlign:"center", marginTop:"0.8rem" }}>
-        <a href="https://www.ratp.fr/en/plans-lignes/metro" target="_blank" rel="noreferrer" style={{ fontSize:"0.72rem", letterSpacing:"0.15em", textTransform:"uppercase", color:C.gold, textDecoration:"none" }}>View Official RATP Métro Map →</a>
+        <a href="https://www.ratp.fr/en/plans-lignes/metro" target="_blank" style={{ fontSize:"0.72rem", letterSpacing:"0.15em", textTransform:"uppercase", color:C.gold, textDecoration:"none" }}>View Official RATP Métro Map →</a>
       </div>
     </div>
   );
@@ -648,6 +551,7 @@ function FrenchTab() {
 }
 
 // ── PHOTOS TAB ────────────────────────────────────────────────
+
 const ALBUM_URL = "https://www.icloud.com/sharedalbum/#B1zJtdOXmV7jo9";
 
 function PhotosTab() {
@@ -659,21 +563,26 @@ function PhotosTab() {
   const [showNamePicker, setShowNamePicker] = useState(false);
   const [pendingPhoto, setPendingPhoto] = useState(null);
   const fileRef = useRef(null);
+
   const NAMES = ["Eric","Candice","Allen","Elizabeth","Rick","Lynn"];
   const NAME_COLORS = { Eric:C.sage, Candice:C.sage, Allen:C.sky, Elizabeth:C.sky, Rick:C.blush, Lynn:C.blush };
+
+  // Load photos from storage - fixed key that never changes across deployments
   const PHOTO_KEY = "paris-a-six-2026";
 
   useEffect(() => {
-    try {
-      const stored = localStorage.getItem(PHOTO_KEY);
-      if (stored) setPhotos(JSON.parse(stored));
-    } catch(e) {}
-    setLoading(false);
+    (async () => {
+      try {
+        const result = await window.storage.get(PHOTO_KEY, true);
+        if (result?.value) setPhotos(JSON.parse(result.value));
+      } catch(e) {}
+      setLoading(false);
+    })();
   }, []);
 
-  const savePhotos = (newPhotos) => {
+  const savePhotos = async (newPhotos) => {
     try {
-      localStorage.setItem(PHOTO_KEY, JSON.stringify(newPhotos));
+      await window.storage.set(PHOTO_KEY, JSON.stringify(newPhotos), true);
     } catch(e) {}
   };
 
@@ -693,6 +602,8 @@ function PhotosTab() {
     if (!pendingPhoto || !authorName) return;
     setUploading(true);
     setShowNamePicker(false);
+
+    // Compress image
     const compressed = await compressImage(pendingPhoto, 400, 0.4);
     const newPhoto = {
       id: Date.now(),
@@ -702,15 +613,15 @@ function PhotosTab() {
     };
     const updated = [newPhoto, ...photos];
     setPhotos(updated);
-    savePhotos(updated);
+    await savePhotos(updated);
     setPendingPhoto(null);
     setUploading(false);
   };
 
-  const deletePhoto = (id) => {
+  const deletePhoto = async (id) => {
     const updated = photos.filter(p => p.id !== id);
     setPhotos(updated);
-    savePhotos(updated);
+    await savePhotos(updated);
     setSelected(null);
   };
 
@@ -730,6 +641,8 @@ function PhotosTab() {
   return (
     <div>
       <SectionHeader num="09" title="Group Photos" />
+
+      {/* Header row */}
       <div style={{ display:"flex", gap:"0.7rem", marginBottom:"1.2rem", alignItems:"center" }}>
         <button onClick={() => fileRef.current?.click()} disabled={uploading} style={{
           flex:1, padding:"0.85rem", borderRadius:8, border:"none", cursor:"pointer",
@@ -740,7 +653,7 @@ function PhotosTab() {
         }}>
           {uploading ? "⏳ Saving…" : "📷 Add Photo"}
         </button>
-        <a href={ALBUM_URL} target="_blank" rel="noreferrer" style={{
+        <a href={ALBUM_URL} target="_blank" style={{
           padding:"0.85rem 1rem", borderRadius:8,
           background:C.ivory, border:`1px solid rgba(184,150,74,0.3)`,
           fontFamily:"'Jost',sans-serif", fontSize:"0.78rem", color:C.gold,
@@ -748,11 +661,13 @@ function PhotosTab() {
         }}>☁️ iCloud</a>
       </div>
       <input ref={fileRef} type="file" accept="image/*" capture="environment" onChange={handleFileChange} style={{ display:"none" }} />
+
+      {/* Name picker modal */}
       {showNamePicker && (
         <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.7)", zIndex:500, display:"flex", alignItems:"flex-end", justifyContent:"center" }}>
           <div style={{ background:C.ivory, borderRadius:"16px 16px 0 0", padding:"1.5rem", width:"100%", maxWidth:500 }}>
             <h3 style={{ fontFamily:"'Playfair Display',serif", fontWeight:400, fontSize:"1.1rem", color:C.dark, marginBottom:"0.4rem", textAlign:"center" }}>Who's adding this photo?</h3>
-            {pendingPhoto && <img src={pendingPhoto} alt="preview" style={{ width:"100%", height:180, objectFit:"cover", borderRadius:8, marginBottom:"1rem" }} />}
+            {pendingPhoto && <img src={pendingPhoto} style={{ width:"100%", height:180, objectFit:"cover", borderRadius:8, marginBottom:"1rem" }} />}
             <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:"0.5rem", marginBottom:"1rem" }}>
               {NAMES.map(n => (
                 <button key={n} onClick={() => setAuthorName(n)} style={{
@@ -770,9 +685,11 @@ function PhotosTab() {
           </div>
         </div>
       )}
+
+      {/* Fullscreen viewer */}
       {selected && (
         <div onClick={() => setSelected(null)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.92)", zIndex:500, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"1rem" }}>
-          <img src={selected.data} alt={selected.author} style={{ maxWidth:"100%", maxHeight:"75vh", borderRadius:8, objectFit:"contain" }} onClick={e => e.stopPropagation()} />
+          <img src={selected.data} style={{ maxWidth:"100%", maxHeight:"75vh", borderRadius:8, objectFit:"contain" }} onClick={e => e.stopPropagation()} />
           <div style={{ marginTop:"1rem", textAlign:"center" }}>
             <div style={{ color:C.cream, fontFamily:"'Cormorant Garamond',serif", fontSize:"1rem" }}>Added by <strong style={{ color: NAME_COLORS[selected.author] || C.gold }}>{selected.author}</strong> · {selected.date}</div>
           </div>
@@ -782,6 +699,8 @@ function PhotosTab() {
           </div>
         </div>
       )}
+
+      {/* Gallery grid */}
       {loading ? (
         <div style={{ textAlign:"center", padding:"3rem", color:C.muted, fontFamily:"'Cormorant Garamond',serif", fontStyle:"italic" }}>Loading photos…</div>
       ) : photos.length === 0 ? (
@@ -794,7 +713,7 @@ function PhotosTab() {
         <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:"0.4rem" }}>
           {photos.map(p => (
             <div key={p.id} onClick={() => setSelected(p)} style={{ position:"relative", aspectRatio:"1", borderRadius:6, overflow:"hidden", cursor:"pointer" }}>
-              <img src={p.data} alt={p.author} style={{ width:"100%", height:"100%", objectFit:"cover" }} />
+              <img src={p.data} style={{ width:"100%", height:"100%", objectFit:"cover" }} />
               <div style={{ position:"absolute", bottom:0, left:0, right:0, padding:"0.3rem 0.4rem", background:"linear-gradient(transparent, rgba(0,0,0,0.6))" }}>
                 <span style={{ fontSize:"0.6rem", color:"white", fontWeight:500 }}>{p.author}</span>
               </div>
@@ -802,14 +721,16 @@ function PhotosTab() {
           ))}
         </div>
       )}
+
       <div style={{ marginTop:"1rem", textAlign:"center", fontSize:"0.7rem", color:C.muted, fontStyle:"italic" }}>
-        Photos are stored on this device · Tap to view full size
+        Photos are shared across all devices · Tap to view full size
       </div>
     </div>
   );
 }
 
-// ── CONTACTS ──────────────────────────────────────────────────
+// ── APP ───────────────────────────────────────────────────────
+
 const CONTACTS = [
   { couple: "Eric & Candice", color: C.sage, people: [
     { name: "Eric Bernon",     phone: "(202) 802-5940", tel: "+12028025940" },
@@ -829,15 +750,20 @@ function ContactsTab() {
   return (
     <div>
       <SectionHeader num="07" title="Group Contacts" />
+
       <div style={{ display:"flex", flexDirection:"column", gap:"1rem" }}>
         {CONTACTS.map(group => (
           <div key={group.couple} style={{ background:C.ivory, border:`1px solid rgba(184,150,74,0.15)`, borderRadius:4, overflow:"hidden" }}>
+            {/* Couple header */}
             <div style={{ padding:"0.65rem 1.2rem", background:`rgba(184,150,74,0.06)`, borderBottom:`1px solid rgba(184,150,74,0.1)`, display:"flex", alignItems:"center", gap:"0.6rem" }}>
               <div style={{ width:8, height:8, borderRadius:"50%", background:group.color, flexShrink:0 }} />
               <span style={{ fontSize:"0.65rem", letterSpacing:"0.2em", textTransform:"uppercase", color:group.color, fontWeight:500 }}>{group.couple}</span>
             </div>
+
+            {/* People */}
             {group.people.map((p, i) => (
               <div key={p.name} style={{ padding:"1rem 1.2rem", borderBottom: i < group.people.length-1 ? `1px solid rgba(184,150,74,0.08)` : "none" }}>
+                {/* Name + number row */}
                 <div style={{ display:"flex", alignItems:"center", gap:"0.8rem", marginBottom:"0.75rem" }}>
                   <div style={{ width:42, height:42, borderRadius:"50%", background:`linear-gradient(135deg, ${group.color}33, ${group.color}55)`, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, border:`1px solid ${group.color}44` }}>
                     <span style={{ fontFamily:"'Playfair Display',serif", fontSize:"1.1rem", color:group.color }}>{p.name[0]}</span>
@@ -847,12 +773,26 @@ function ContactsTab() {
                     <div style={{ fontSize:"0.8rem", color:C.muted, marginTop:1 }}>{p.phone}</div>
                   </div>
                 </div>
+
+                {/* Big tap-friendly buttons */}
                 <div style={{ display:"flex", gap:"0.6rem" }}>
-                  <a href={`tel:${p.tel}`} style={{ flex:1, display:"flex", alignItems:"center", justifyContent:"center", gap:"0.5rem", padding:"0.75rem", background:`linear-gradient(135deg, ${C.gold}, ${C.goldL})`, borderRadius:8, textDecoration:"none", boxShadow:`0 3px 12px rgba(184,150,74,0.35)` }}>
+                  <a href={`tel:${p.tel}`} style={{
+                    flex:1, display:"flex", alignItems:"center", justifyContent:"center", gap:"0.5rem",
+                    padding:"0.75rem",
+                    background:`linear-gradient(135deg, ${C.gold}, ${C.goldL})`,
+                    borderRadius:8, textDecoration:"none",
+                    boxShadow:`0 3px 12px rgba(184,150,74,0.35)`,
+                  }}>
                     <span style={{ fontSize:"1.1rem" }}>📞</span>
                     <span style={{ fontSize:"0.8rem", fontWeight:500, color:C.dark, letterSpacing:"0.05em" }}>Call</span>
                   </a>
-                  <a href={`sms:${p.tel}`} style={{ flex:1, display:"flex", alignItems:"center", justifyContent:"center", gap:"0.5rem", padding:"0.75rem", background:"rgba(184,150,74,0.1)", border:`1px solid rgba(184,150,74,0.3)`, borderRadius:8, textDecoration:"none" }}>
+                  <a href={`sms:${p.tel}`} style={{
+                    flex:1, display:"flex", alignItems:"center", justifyContent:"center", gap:"0.5rem",
+                    padding:"0.75rem",
+                    background:"rgba(184,150,74,0.1)",
+                    border:`1px solid rgba(184,150,74,0.3)`,
+                    borderRadius:8, textDecoration:"none",
+                  }}>
                     <span style={{ fontSize:"1.1rem" }}>💬</span>
                     <span style={{ fontSize:"0.8rem", fontWeight:500, color:C.gold, letterSpacing:"0.05em" }}>Text</span>
                   </a>
@@ -862,6 +802,8 @@ function ContactsTab() {
           </div>
         ))}
       </div>
+
+      {/* Emergency / useful numbers */}
       <div style={{ marginTop:"1.5rem", background:"linear-gradient(135deg,#2d2a24,#1a1710)", border:`1px solid rgba(184,150,74,0.3)`, borderRadius:4, padding:"1.3rem" }}>
         <h3 style={{ fontFamily:"'Playfair Display',serif", fontWeight:400, fontSize:"0.95rem", color:C.goldL, marginBottom:"0.9rem" }}>🇫🇷 Useful Paris Numbers</h3>
         <div style={{ display:"flex", flexDirection:"column", gap:"0.4rem" }}>
@@ -871,7 +813,14 @@ function ContactsTab() {
             { label:"SAMU (Medical Emergency)", num:"15", tel:"15" },
             { label:"La Tour d'Argent", num:"+33 1 40 46 71 39", tel:"+33140467139" },
           ].map(r => (
-            <a key={r.label} href={`tel:${r.tel}`} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"0.75rem 0.9rem", background:"rgba(255,255,255,0.04)", borderRadius:6, textDecoration:"none", border:`1px solid rgba(184,150,74,0.1)`, marginBottom:"0.3rem" }}>
+            <a key={r.label} href={`tel:${r.tel}`} style={{
+              display:"flex", alignItems:"center", justifyContent:"space-between",
+              padding:"0.75rem 0.9rem",
+              background:"rgba(255,255,255,0.04)",
+              borderRadius:6, textDecoration:"none",
+              border:`1px solid rgba(184,150,74,0.1)`,
+              marginBottom:"0.3rem",
+            }}>
               <span style={{ fontSize:"0.78rem", color:"rgba(245,240,232,0.65)" }}>{r.label}</span>
               <span style={{ fontSize:"0.82rem", color:C.gold, fontWeight:500 }}>{r.num} 📞</span>
             </a>
@@ -883,7 +832,12 @@ function ContactsTab() {
 }
 
 // ── MAP TAB ───────────────────────────────────────────────────
+
 const VENUES = [
+  { name:"Eric & Candice's Apartment",      emoji:"🏠", lat:48.8316, lng:2.2998, note:"5 bis Rue Chauvelot, 75015", stay:"ec" },
+  { name:"Hôtel Duminy Vendôme",            emoji:"🏨", lat:48.8676, lng:2.3273, note:"Allen, Elizabeth, Rick & Lynn", stay:"others" },
+  { name:"Eugénie & Diego",                emoji:"👋", lat:48.8208, lng:2.3411, note:"53 Rue de l'Amiral Mouchez, 75013 · Dinner Tue 5/12", stay:"friends" },
+  { name:"Rémi & Cécile",                  emoji:"👋", lat:48.8941, lng:2.1349, note:"22 Ter Avenue de Lorraine, Le Vésinet · Lunch Fri 5/8", stay:"friends" },
   { name:"Chez Papa",               emoji:"🍽️", lat:48.8421, lng:2.3271, note:"Dinner Wed 5/6 · 7PM" },
   { name:"The Louvre",              emoji:"🏛️", lat:48.8606, lng:2.3376, note:"Thu 5/7 · 11AM" },
   { name:"Printemps Haussmann",     emoji:"🥂", lat:48.8753, lng:2.3308, note:"Rooftop bar Thu 5/7" },
@@ -909,6 +863,9 @@ function MapTab() {
   const [selected, setSelected] = useState(null);
   const mapRef = useRef(null);
   const mapObj = useRef(null);
+  const markersRef = useRef([]);
+
+  // Paris center
   const PARIS = { lat: 48.8566, lng: 2.3522 };
 
   const getLocation = () => {
@@ -920,10 +877,11 @@ function MapTab() {
         setUserPos({ lat: pos.coords.latitude, lng: pos.coords.longitude });
         setLoading(false);
         if (mapObj.current) {
-          mapObj.current.setView([pos.coords.latitude, pos.coords.longitude], 14);
+          mapObj.current.setCenter({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+          mapObj.current.setZoom(14);
         }
       },
-      () => {
+      err => {
         setLoading(false);
         setError("Could not get location. Please allow location access and try again.");
       },
@@ -934,7 +892,68 @@ function MapTab() {
   useEffect(() => {
     if (mapObj.current || !mapRef.current) return;
 
-    const initLeaflet = () => {
+    // Load Google Maps
+    const existingScript = document.getElementById('gmaps-script');
+    const initMap = () => {
+      if (!window.google || !mapRef.current) return;
+      const map = new window.google.maps.Map(mapRef.current, {
+        center: PARIS,
+        zoom: 13,
+        styles: [
+          { elementType:"geometry", stylers:[{ color:"#f5f0e8" }] },
+          { elementType:"labels.text.fill", stylers:[{ color:"#2d2a24" }] },
+          { featureType:"water", elementType:"geometry", stylers:[{ color:"#b8d4e8" }] },
+          { featureType:"road", elementType:"geometry", stylers:[{ color:"#ffffff" }] },
+          { featureType:"road.arterial", elementType:"geometry", stylers:[{ color:"#faf7f2" }] },
+          { featureType:"park", elementType:"geometry", stylers:[{ color:"#d4e8d0" }] },
+          { featureType:"poi", stylers:[{ visibility:"off" }] },
+          { featureType:"transit", stylers:[{ visibility:"off" }] },
+        ],
+        disableDefaultUI: true,
+        zoomControl: true,
+        mapTypeControl: false,
+      });
+      mapObj.current = map;
+
+      // Add venue markers
+      VENUES.forEach(v => {
+        const marker = new window.google.maps.Marker({
+          position: { lat: v.lat, lng: v.lng },
+          map,
+          title: v.name,
+          label: { text: v.emoji, fontSize: "18px" },
+          icon: {
+            path: window.google.maps.SymbolPath.CIRCLE,
+            scale: 18,
+            fillColor: "#faf7f2",
+            fillOpacity: 1,
+            strokeColor: "#b8964a",
+            strokeWeight: 2,
+          },
+        });
+        marker.addListener("click", () => setSelected(v));
+        markersRef.current.push(marker);
+      });
+    };
+
+    if (!existingScript) {
+      const script = document.createElement('script');
+      script.id = 'gmaps-script';
+      // Using OpenStreetMap via Leaflet instead (no API key needed)
+      script.src = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js';
+      script.onload = () => {
+        const link = document.createElement('link');
+        link.rel = 'stylesheet';
+        link.href = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css';
+        document.head.appendChild(link);
+        initLeaflet();
+      };
+      document.head.appendChild(script);
+    } else {
+      initLeaflet();
+    }
+
+    function initLeaflet() {
       if (!window.L || !mapRef.current || mapObj.current) return;
       const map = window.L.map(mapRef.current, { zoomControl: true }).setView([PARIS.lat, PARIS.lng], 13);
       window.L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -943,37 +962,31 @@ function MapTab() {
       }).addTo(map);
       mapObj.current = map;
 
+      // Venue markers
       VENUES.forEach(v => {
+        // Accommodations and friends get larger markers with couple-colored borders
+        const isStay = !!v.stay;
+        const borderColor = v.stay === "ec" ? "#7a9478" : v.stay === "others" ? "#6a8fa8" : v.stay === "friends" ? "#d4967a" : "#b8964a";
+        const size = isStay ? 44 : 36;
+        const fontSize = isStay ? 20 : 16;
+        const borderWidth = isStay ? 3 : 2;
+        const ringHTML = isStay ? `box-shadow:0 0 0 4px ${borderColor}33, 0 2px 8px rgba(0,0,0,0.25);` : "box-shadow:0 2px 6px rgba(0,0,0,0.2);";
+
         const icon = window.L.divIcon({
-          html: `<div style="background:#faf7f2;border:2px solid #b8964a;border-radius:50%;width:36px;height:36px;display:flex;align-items:center;justify-content:center;font-size:16px;box-shadow:0 2px 6px rgba(0,0,0,0.2)">${v.emoji}</div>`,
+          html: `<div style="background:#faf7f2;border:${borderWidth}px solid ${borderColor};border-radius:50%;width:${size}px;height:${size}px;display:flex;align-items:center;justify-content:center;font-size:${fontSize}px;${ringHTML}">${v.emoji}</div>`,
           className: '',
-          iconSize: [36, 36],
-          iconAnchor: [18, 18],
+          iconSize: [size, size],
+          iconAnchor: [size/2, size/2],
         });
         const marker = window.L.marker([v.lat, v.lng], { icon })
           .addTo(map)
           .bindPopup(`<strong>${v.name}</strong><br/><span style="font-size:0.8rem;color:#7a7468">${v.note}</span>`);
         marker.on('click', () => setSelected(v));
       });
-    };
-
-    const existingScript = document.getElementById('leaflet-script');
-    if (!existingScript) {
-      const link = document.createElement('link');
-      link.rel = 'stylesheet';
-      link.href = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css';
-      document.head.appendChild(link);
-
-      const script = document.createElement('script');
-      script.id = 'leaflet-script';
-      script.src = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js';
-      script.onload = initLeaflet;
-      document.head.appendChild(script);
-    } else if (window.L) {
-      initLeaflet();
     }
   }, []);
 
+  // Add/update user location marker
   useEffect(() => {
     if (!userPos || !mapObj.current || !window.L) return;
     const icon = window.L.divIcon({
@@ -991,18 +1004,38 @@ function MapTab() {
   return (
     <div>
       <SectionHeader num="08" title="Paris Map" />
+
+      {/* Controls */}
       <div style={{ display:"flex", gap:"0.7rem", marginBottom:"1rem", flexWrap:"wrap" }}>
-        <button onClick={getLocation} disabled={loading} style={{ flex:1, padding:"0.8rem 1rem", background: loading ? "rgba(184,150,74,0.3)" : `linear-gradient(135deg, ${C.gold}, ${C.goldL})`, border:"none", borderRadius:8, cursor: loading ? "wait" : "pointer", fontFamily:"'Jost',sans-serif", fontSize:"0.82rem", fontWeight:500, color: C.dark, display:"flex", alignItems:"center", justifyContent:"center", gap:"0.5rem", boxShadow:"0 3px 12px rgba(184,150,74,0.3)" }}>
+        <button onClick={getLocation} disabled={loading} style={{
+          flex:1, padding:"0.8rem 1rem",
+          background: loading ? "rgba(184,150,74,0.3)" : `linear-gradient(135deg, ${C.gold}, ${C.goldL})`,
+          border:"none", borderRadius:8, cursor: loading ? "wait" : "pointer",
+          fontFamily:"'Jost',sans-serif", fontSize:"0.82rem", fontWeight:500,
+          color: C.dark, display:"flex", alignItems:"center", justifyContent:"center", gap:"0.5rem",
+          boxShadow:"0 3px 12px rgba(184,150,74,0.3)",
+        }}>
           {loading ? "📡 Getting location…" : userPos ? "📍 Update My Location" : "📍 Show My Location"}
         </button>
         {userPos && (
-          <button onClick={() => mapObj.current?.setView([userPos.lat, userPos.lng], 15)} style={{ padding:"0.8rem 1rem", background:C.ivory, border:`1px solid rgba(184,150,74,0.3)`, borderRadius:8, cursor:"pointer", fontFamily:"'Jost',sans-serif", fontSize:"0.82rem", color:C.gold }}>🎯 Center on Me</button>
+          <button onClick={() => mapObj.current?.setView([userPos.lat, userPos.lng], 15)} style={{
+            padding:"0.8rem 1rem", background:C.ivory,
+            border:`1px solid rgba(184,150,74,0.3)`, borderRadius:8, cursor:"pointer",
+            fontFamily:"'Jost',sans-serif", fontSize:"0.82rem", color:C.gold,
+          }}>🎯 Center on Me</button>
         )}
-        <button onClick={() => mapObj.current?.setView([PARIS.lat, PARIS.lng], 13)} style={{ padding:"0.8rem 1rem", background:C.ivory, border:`1px solid rgba(184,150,74,0.3)`, borderRadius:8, cursor:"pointer", fontFamily:"'Jost',sans-serif", fontSize:"0.82rem", color:C.gold }}>🗺️ All Paris</button>
+        <button onClick={() => mapObj.current?.setView([PARIS.lat, PARIS.lng], 13)} style={{
+          padding:"0.8rem 1rem", background:C.ivory,
+          border:`1px solid rgba(184,150,74,0.3)`, borderRadius:8, cursor:"pointer",
+          fontFamily:"'Jost',sans-serif", fontSize:"0.82rem", color:C.gold,
+        }}>🗺️ All Paris</button>
       </div>
+
       {error && (
         <div style={{ background:"rgba(212,150,122,0.15)", border:`1px solid rgba(212,150,122,0.3)`, borderRadius:8, padding:"0.8rem 1rem", marginBottom:"1rem", fontSize:"0.8rem", color:C.blush }}>{error}</div>
       )}
+
+      {/* Selected venue info */}
       {selected && (
         <div style={{ background:C.ivory, border:`1px solid rgba(184,150,74,0.25)`, borderRadius:8, padding:"0.9rem 1rem", marginBottom:"0.8rem", display:"flex", alignItems:"center", gap:"0.8rem" }}>
           <span style={{ fontSize:"1.4rem" }}>{selected.emoji}</span>
@@ -1010,18 +1043,25 @@ function MapTab() {
             <div style={{ fontFamily:"'Cormorant Garamond',serif", fontSize:"1rem", color:C.dark }}>{selected.name}</div>
             <div style={{ fontSize:"0.75rem", color:C.muted }}>{selected.note}</div>
           </div>
-          <a href={`https://maps.apple.com/?q=${encodeURIComponent(selected.name)}&ll=${selected.lat},${selected.lng}`} target="_blank" rel="noreferrer" style={{ padding:"0.45rem 0.8rem", background:`linear-gradient(135deg,${C.gold},${C.goldL})`, borderRadius:6, textDecoration:"none", fontSize:"0.72rem", color:C.dark, fontWeight:500, whiteSpace:"nowrap" }}>
+          <a href={`https://maps.apple.com/?q=${encodeURIComponent(selected.name)}&ll=${selected.lat},${selected.lng}`}
+            target="_blank"
+            style={{ padding:"0.45rem 0.8rem", background:`linear-gradient(135deg,${C.gold},${C.goldL})`, borderRadius:6, textDecoration:"none", fontSize:"0.72rem", color:C.dark, fontWeight:500, whiteSpace:"nowrap" }}>
             Open in Maps →
           </a>
           <button onClick={() => setSelected(null)} style={{ background:"none", border:"none", cursor:"pointer", color:C.muted, fontSize:"1rem", padding:"0.2rem" }}>✕</button>
         </div>
       )}
+
+      {/* Map */}
       <div ref={mapRef} style={{ width:"100%", height:480, borderRadius:8, border:`1px solid rgba(184,150,74,0.2)`, overflow:"hidden", background:"#e8e0d5" }} />
+
+      {/* Venue legend */}
       <div style={{ marginTop:"1rem", background:C.ivory, border:`1px solid rgba(184,150,74,0.15)`, borderRadius:4, padding:"1rem 1.2rem" }}>
         <div style={{ fontSize:"0.65rem", letterSpacing:"0.2em", textTransform:"uppercase", color:C.gold, fontWeight:500, marginBottom:"0.7rem" }}>All Venues on Map</div>
         <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"0.4rem" }}>
           {VENUES.map(v => (
-            <button key={v.name} onClick={() => { setSelected(v); mapObj.current?.setView([v.lat, v.lng], 16); }} style={{ display:"flex", alignItems:"center", gap:"0.4rem", padding:"0.4rem 0.5rem", background:"none", border:`1px solid rgba(184,150,74,0.1)`, borderRadius:4, cursor:"pointer", textAlign:"left" }}>
+            <button key={v.name} onClick={() => { setSelected(v); mapObj.current?.setView([v.lat, v.lng], 16); }}
+              style={{ display:"flex", alignItems:"center", gap:"0.4rem", padding:"0.4rem 0.5rem", background:"none", border:`1px solid rgba(184,150,74,0.1)`, borderRadius:4, cursor:"pointer", textAlign:"left" }}>
               <span style={{ fontSize:"0.9rem" }}>{v.emoji}</span>
               <span style={{ fontSize:"0.72rem", color:C.charcoal, lineHeight:1.3 }}>{v.name}</span>
             </button>
@@ -1032,7 +1072,111 @@ function MapTab() {
   );
 }
 
-// ── APP ───────────────────────────────────────────────────────
+// ── SPLASH SCREEN ─────────────────────────────────────────────
+
+function SplashScreen() {
+  const [show, setShow] = useState(true);
+  const [fadeOut, setFadeOut] = useState(false);
+
+  useEffect(() => {
+    const fadeTimer = setTimeout(() => setFadeOut(true), 1800);
+    const hideTimer = setTimeout(() => setShow(false), 2400);
+    return () => { clearTimeout(fadeTimer); clearTimeout(hideTimer); };
+  }, []);
+
+  if (!show) return null;
+
+  return (
+    <div style={{
+      position:"fixed", inset:0, zIndex:9999,
+      background:"#faf7f2",
+      display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center",
+      opacity: fadeOut ? 0 : 1,
+      transition:"opacity 0.6s ease",
+      pointerEvents: fadeOut ? "none" : "auto",
+    }}>
+      <img
+        src="/logo.jpg"
+        alt="Paris à Six"
+        style={{
+          width: 280, height: 280,
+          objectFit: "contain",
+          animation: "logoIn 1.2s cubic-bezier(.34,1.56,.64,1) both",
+        }}
+      />
+    </div>
+  );
+}
+
+// ── INSTALL PROMPT ────────────────────────────────────────────
+
+function InstallPrompt() {
+  const [show, setShow] = useState(false);
+  const [isIOS, setIsIOS] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const isStandalone = window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone;
+    if (isStandalone) return;
+    try { if (localStorage.getItem("install-prompt-dismissed")) return; } catch(e) {}
+    const ios = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+    setIsIOS(ios);
+    const t = setTimeout(() => setShow(true), 1500);
+    return () => clearTimeout(t);
+  }, []);
+
+  const dismiss = () => {
+    setShow(false);
+    try { localStorage.setItem("install-prompt-dismissed", "1"); } catch(e) {}
+  };
+
+  if (!show) return null;
+
+  return (
+    <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:1000, display:"flex", alignItems:"flex-end", justifyContent:"center" }}>
+      <div style={{ background:C.ivory, borderRadius:"20px 20px 0 0", width:"100%", maxWidth:500, padding:"1.5rem", animation:"slideUp 0.35s cubic-bezier(.34,1.56,.64,1) both" }}>
+        <div style={{ width:40, height:4, background:"rgba(184,150,74,0.3)", borderRadius:2, margin:"0 auto 1.2rem" }} />
+        <div style={{ textAlign:"center", marginBottom:"1.2rem" }}>
+          <div style={{ fontSize:"3rem", marginBottom:"0.5rem" }}>🗼</div>
+          <h2 style={{ fontFamily:"'Playfair Display',serif", fontWeight:400, fontSize:"1.4rem", color:C.dark, marginBottom:"0.4rem" }}>Add to Home Screen</h2>
+          <p style={{ fontFamily:"'Cormorant Garamond',serif", fontStyle:"italic", fontSize:"0.95rem", color:C.muted }}>Get Paris à Six on your home screen for one-tap access</p>
+        </div>
+        {isIOS ? (
+          <div style={{ background:"rgba(184,150,74,0.06)", border:`1px solid rgba(184,150,74,0.2)`, borderRadius:8, padding:"1rem", marginBottom:"1rem" }}>
+            <div style={{ fontSize:"0.65rem", letterSpacing:"0.2em", textTransform:"uppercase", color:C.gold, fontWeight:500, marginBottom:"0.7rem" }}>iPhone Instructions</div>
+            {[
+              { num:"1", icon:"⬆️", text:"Tap the Share button at the bottom of Safari" },
+              { num:"2", icon:"➕", text:'Scroll down and tap "Add to Home Screen"' },
+              { num:"3", icon:"✓", text:'Tap "Add" in the top right' },
+            ].map((s, i, arr) => (
+              <div key={s.num} style={{ display:"flex", alignItems:"center", gap:"0.8rem", padding:"0.6rem 0", borderBottom: i < arr.length-1 ? `1px solid rgba(184,150,74,0.1)` : "none" }}>
+                <div style={{ width:26, height:26, borderRadius:"50%", background:`linear-gradient(135deg,${C.gold},${C.goldL})`, display:"flex", alignItems:"center", justifyContent:"center", color:C.dark, fontSize:"0.75rem", fontWeight:600, flexShrink:0 }}>{s.num}</div>
+                <span style={{ fontSize:"1.1rem" }}>{s.icon}</span>
+                <span style={{ fontSize:"0.82rem", color:C.charcoal, flex:1 }}>{s.text}</span>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div style={{ background:"rgba(184,150,74,0.06)", border:`1px solid rgba(184,150,74,0.2)`, borderRadius:8, padding:"1rem", marginBottom:"1rem" }}>
+            <div style={{ fontSize:"0.65rem", letterSpacing:"0.2em", textTransform:"uppercase", color:C.gold, fontWeight:500, marginBottom:"0.7rem" }}>Android Instructions</div>
+            {[
+              { num:"1", text:"Tap the menu (⋮) in your browser" },
+              { num:"2", text:'Tap "Add to Home screen" or "Install app"' },
+              { num:"3", text:'Tap "Add" or "Install" to confirm' },
+            ].map((s, i, arr) => (
+              <div key={s.num} style={{ display:"flex", alignItems:"center", gap:"0.8rem", padding:"0.6rem 0", borderBottom: i < arr.length-1 ? `1px solid rgba(184,150,74,0.1)` : "none" }}>
+                <div style={{ width:26, height:26, borderRadius:"50%", background:`linear-gradient(135deg,${C.gold},${C.goldL})`, display:"flex", alignItems:"center", justifyContent:"center", color:C.dark, fontSize:"0.75rem", fontWeight:600, flexShrink:0 }}>{s.num}</div>
+                <span style={{ fontSize:"0.82rem", color:C.charcoal, flex:1 }}>{s.text}</span>
+              </div>
+            ))}
+          </div>
+        )}
+        <button onClick={dismiss} style={{ width:"100%", padding:"0.85rem", borderRadius:8, border:"none", cursor:"pointer", background:`linear-gradient(135deg,${C.gold},${C.goldL})`, fontFamily:"'Jost',sans-serif", fontWeight:500, fontSize:"0.9rem", color:C.dark }}>Got it!</button>
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
   const [tab, setTab] = useState("itinerary");
   const TABS = [
@@ -1046,9 +1190,15 @@ export default function App() {
     { id:"map",         label:"Map",         icon:"🗺️" },
     { id:"photos",      label:"Photos",      icon:"📸" },
   ];
+
   return (
     <div style={{ fontFamily:"'Jost',sans-serif", background:C.cream, minHeight:"100vh" }}>
       <style>{gf}</style>
+
+      <SplashScreen />
+      <InstallPrompt />
+
+      {/* HERO - compact */}
       <div style={{ background:`linear-gradient(135deg, #2d2a24 0%, #1a1710 100%)`, padding:"2.5rem 1.5rem 2rem", textAlign:"center", position:"relative", overflow:"hidden" }}>
         <div style={{ position:"absolute", inset:0, background:`radial-gradient(ellipse at 50% 0%, rgba(184,150,74,0.18) 0%, transparent 70%)` }} />
         <p style={{ fontSize:"0.65rem", letterSpacing:"0.4em", textTransform:"uppercase", color:C.gold, marginBottom:"0.6rem", position:"relative" }}>May 2026</p>
@@ -1062,16 +1212,31 @@ export default function App() {
           ))}
         </div>
       </div>
+
+      {/* NAV */}
       <nav style={{ position:"sticky", top:0, zIndex:100, background:"rgba(250,247,242,0.97)", backdropFilter:"blur(10px)", borderBottom:`1px solid rgba(184,150,74,0.2)` }}>
         <div style={{ maxWidth:900, margin:"0 auto", display:"grid", gridTemplateColumns:"repeat(3,1fr)" }}>
           {TABS.map(t => (
-            <button key={t.id} onClick={() => setTab(t.id)} style={{ background:"none", border:"none", cursor:"pointer", padding:"0.6rem 0.3rem", display:"flex", flexDirection:"column", alignItems:"center", gap:"0.2rem", borderBottom: tab===t.id ? `2px solid ${C.gold}` : "2px solid transparent", transition:"all 0.2s" }}>
+            <button key={t.id} onClick={() => setTab(t.id)} style={{
+              background:"none", border:"none", cursor:"pointer",
+              padding:"0.6rem 0.3rem",
+              display:"flex", flexDirection:"column", alignItems:"center", gap:"0.2rem",
+              borderBottom: tab===t.id ? `2px solid ${C.gold}` : "2px solid transparent",
+              transition:"all 0.2s",
+            }}>
               <span style={{ fontSize:"1.1rem", lineHeight:1 }}>{t.icon}</span>
-              <span style={{ fontFamily:"'Jost',sans-serif", fontWeight: tab===t.id ? 500 : 300, fontSize:"0.6rem", letterSpacing:"0.08em", textTransform:"uppercase", color: tab===t.id ? C.gold : C.muted, transition:"color 0.2s" }}>{t.label}</span>
+              <span style={{
+                fontFamily:"'Jost',sans-serif", fontWeight: tab===t.id ? 500 : 300,
+                fontSize:"0.6rem", letterSpacing:"0.08em", textTransform:"uppercase",
+                color: tab===t.id ? C.gold : C.muted,
+                transition:"color 0.2s",
+              }}>{t.label}</span>
             </button>
           ))}
         </div>
       </nav>
+
+      {/* CONTENT */}
       <div style={{ maxWidth:900, margin:"0 auto", padding:"2.5rem 1.2rem 7rem" }}>
         {tab === "itinerary"   && <ItineraryTab />}
         {tab === "restaurants" && <RestaurantsTab />}
@@ -1083,7 +1248,6 @@ export default function App() {
         {tab === "map"         && <MapTab />}
         {tab === "photos"      && <PhotosTab />}
       </div>
-      <ChatWidget />
     </div>
   );
 }
